@@ -1,0 +1,42 @@
+-- When you clone a database, the roles are not retained to the cloned database.
+-- Rather only the child objects of the original database(ie schema, table) would retain their privileges in the cloned database. 
+-- Similarly, when you clone a schema, the roles are not retained to the cloned schema. 
+-- Only the child object of the original schema(ie table) would retain the privileges from the original schema. 
+use citibike;
+select count(*) from players_tbstage;
+select * from players_tbstage;
+delete from players_tbstage where nationality='Colombia';  --618 rows deleted
+--query id = 01a31d40-0000-32e0-0000-83690003803e
+
+create or replace table players_clone clone players_tbstage;  --clone
+
+select count(*) from players_clone; 
+
+--checking information schema to verify zero copy clone
+select * from citibike.information_schema.tables where table_name in ('PLAYERS_CLONE','PLAYERS_TBSTAGE');
+
+-- checking storage of clone table
+
+select * from snowflake.account_usage.table_storage_metrics where table_name in ('PLAYERS_CLONE','PLAYERS_TBSTAGE');
+
+-- update cloned table 
+
+delete from players_clone where nationality='Portughal';   --618 deleted with delete operation there is no active byte change 
+
+update players_clone set club='Jameshedpur' where club='FC Goa'; -- no change in active bytes
+insert into players_clone(ID,name) values(1,'shashank');
+
+//truncate players_tbstage;
+//
+//insert into players_tbstage 
+//select * from players_tbstage before (statement=>'01a31d35-0000-3310-0000-8369000368a2');
+//drop table players_clone;
+//
+
+-- here on clone table has its own life cycle and
+-- any change made will be within clone object and not on the source table
+
+-- cannot create permanent tables clone from transient or temporary tables
+-- however we can create temporary table clone from transient table and vice versa
+-- permanent tables can be cloned to permanent, temporary and transient tables
+

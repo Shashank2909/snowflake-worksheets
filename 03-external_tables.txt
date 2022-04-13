@@ -1,0 +1,60 @@
+create database citibike2;
+use database citibike2;
+use schema public;
+
+create or replace stage s3bucket
+url = 's3://snowflake-workshop-lab/citibike-trips/';
+
+list @s3bucket;
+show stages;
+desc stage s3bucket;
+remove @s3_bucket;
+
+list @~ pattern='.*t*';
+use database citibike;
+list @%players;
+
+create or replace file format csv_ff
+type = 'csv'
+field_delimiter = ','
+record_delimiter = '\n';
+
+select t.$1 from @s3bucket (file_format => 'csv_ff') t;
+
+select $1,$2,$3,$4,$5 from @s3bucket; 
+
+create or replace external table trips_external
+(tripduration varchar as (value:c1::varchar),
+starttime varchar as (value:c2::varchar),
+stoptime varchar as (value:c3::varchar),
+start_station_id varchar as (value:c4::varchar),
+start_station_name varchar as (value:c5::varchar),
+start_station_latitude varchar as (value:c6::varchar),
+start_station_longitude varchar as (value:c7::varchar),
+end_station_id varchar as (value:c8::varchar),
+end_station_name varchar as (value:c9::varchar),
+end_station_latitude varchar as (value:c10::varchar),
+end_station_longitude varchar as (value:c11::varchar),
+bikeid varchar as (value:c12::varchar),
+membership_type varchar as (value:c13::varchar),
+usertype varchar as (value:c14::varchar),
+birth_year varchar as (value:c15::varchar),
+gender varchar as (value:c16::varchar))
+ 
+with location = @s3bucket
+file_format = (format_name = csv_ff);
+
+select * from trips_external;
+select count(*) from trips_external;
+
+desc external table trips_external type = 'column';
+desc external table trips_external type = 'stage';
+
+list @%TRIPS_EXTERNAL;
+
+use citibike2;
+
+list @%trips;
+
+show stages;
+

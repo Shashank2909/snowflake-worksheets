@@ -1,0 +1,81 @@
+use citibike;
+create or replace table my_customer (
+    cust_key number(38,0),
+    name varchar(25),
+    address varchar(40),
+    nation_key number(38,0),
+    phone varchar,
+    account_balance number(12,2),
+    market_segment varchar(10),
+    comment varchar(117)
+);
+
+//truncate my_customer;
+//drop pipe pipe1;
+select * from my_customer;
+
+show file formats;
+
+-- creating stage to load history and delta files
+create or replace stage stg_pipe
+file_format = csv;
+
+show stages like '%stg_pipe%';
+
+desc stage stg_pipe;
+
+list @stg_pipe;
+
+select count(*) from snowflake_sample_data.TPCH_SF1.customer;
+select count(*) from snowflake_sample_data.TPCH_SF10.customer;
+
+-- copy history data in the table----
+list @stg_pipe/history;
+copy into my_customer from @stg_pipe/history/;
+select * from my_customer;
+select count(*) from my_customer;  --149999 rows initially --751182 rows after loading delta1 and 1370482 after delta2
+
+--- create pipe object
+create or replace pipe pipe1
+as
+copy into my_customer from @stg_pipe/delta/;
+
+desc pipe pipe1;
+
+list @stg_pipe/delta;
+
+---- pipe needs to be resumed
+alter pipe pipe1 refresh;
+
+select SYSTEM$PIPE_STATUS('pipe1');
+
+-- create private and public key to load data using rest api notifications
+
+alter user shashank set rsa_public_key='MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt34RUIyIXZJoTVRRPKxd
+WuxsPBkks6AhRoNYjCRqSwK6LZHSD8kHqCRXir9oEGhuMg59hsB8wZKWQOzH3bCE
+7IDDa7I/BQrdZZ3fijzvrrfdh5j7IX+atjzymk9y0zlBicSXGkotF+jGklMkmzz8
+wHMOFt3GHEH/Qy0a4X8QMKiuzx9D51xqWOMLXcRFunvi/DPyt/m7wEaTpthx0IGH
+g0NOnIsF5y1YE/RTMGKVBnxT2LfD/Nfsdqp88e9SjtfTJZT8P8HGAwlRTfyWorWb
+NTZx47Si0dVbXLMyDxc6tsMI9ScGnukpjgwnPQtQNytF+m3irXmxGHFO3N963KIn
+jwIDAQAB';
+
+
+desc user shashank;
+
+select * from my_customer;
+
+-- monitor pipe
+
+select * from snowflake.account_usage.copy_history where pipe_name='pipe1';
+
+select * from snowflake.account_usage.warehouse_load_history;
+
+select * from snowflake.account_usage.load_history where table_name='my_customer';
+
+---- pause the pipe
+
+alter pipe pipe1 set pipe_execution_paused=false; 
+
+select SYSTEM$PIPE_STATUS('pipe1');
+
+

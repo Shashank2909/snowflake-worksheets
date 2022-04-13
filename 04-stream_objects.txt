@@ -1,0 +1,32 @@
+-- stream objects are created on top of tables
+-- stream objects records dml operations on the tables
+-- 3 extra columns are added to the stream table (action,isupdate and rowID)
+-- stream table only records changes and not the whole table
+-- all types of tables support stream objects
+use citibike;
+----------------------- standard stream table ----------------------------
+create or replace table emp(id int unique, name varchar(50), technology varchar(20));
+
+select * from emp;
+
+insert into emp values(1,'shashank','python');
+insert into emp values(2,'ajgaonkar','java');
+insert into emp values(3,'ritik','pyspark');
+
+create stream emp_stream on table emp;
+select * from emp_stream order by id;
+
+insert into emp values(4,'morajkar','sql'); -- insert operation recorded in emp_stream
+
+delete from emp where id=4; -- delete operation is not recorded in emp_stream table (net result cancels the record)
+delete from emp where id=1; -- delete operation is present in stream table
+
+update emp set name='pratik' where id=2;  -- delete and insert records are added into the emp_stream table 
+select * from emp_stream;  
+
+show streams;
+drop stream emp_stream_append;
+create stream emp_app on table emp append_only=True;  -- captures only insert operations
+
+insert into emp values(5,'tejal','sql'); 
+select * from emp_app;

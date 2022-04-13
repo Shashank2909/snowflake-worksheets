@@ -1,0 +1,63 @@
+use citibike;
+-------- transient vs temporary vs permanent tables 
+
+--- temporary -> Is dropped when session is ended and not visible to other users. 0 fail safe. 1 time travel retention period
+create temporary table mytemptable (id number, creation_date date);
+--- transient -> persist till explicitly dropped and visble to other users with suitable priviledge. 0 fail safe. 1 TTR period
+create transient table mytrantable (id number, creation_date date);
+---- permanent tables -> 7 days fail safe period. 1 day TTR period, 90 for enterprise edition
+-- data_retention_time_in_days = number
+
+show tables like '%my%';
+
+show tables;
+
+create or replace table players (ID int,Name varchar,Age int,Nationality varchar,Overall int,Club varchar,Value varchar, Preferred_foot varchar)
+data_retention_time_in_days=1;
+
+------ before, at, offset statement
+select count(*) from players_tbstage; --18207
+
+update players_tbstage set club='FC Goa' where club='FC Barcelona'; -- 33 rows updated
+
+select count(*) from players_tbstage where club='FC Barcelona';  --0
+
+select count(*) from players_tbstage before(statement => '01a317e4-0000-32d4-0000-83690002ef12')  --33 count
+where club='FC Barcelona';
+
+select count(*) from players_tbstage at(statement => '01a317e2-0000-32d4-0000-83690002ee16')  --33 count
+where club='FC Barcelona';
+
+select count(*) from players_tbstage before(statement => '01a317e4-0000-32d4-0000-83690002ef12')  --33 count
+where club='FC Barcelona'
+minus
+select count(*) from players_tbstage;
+
+select count(*) from players_tbstage at(offset => -10*60) where club='FC Barcelona';  -- 33 count  -- 10*60=600s
+
+select * from SNOWFLAKE_SAMPLE_DATA.TPCDS_SF100TCL.INCOME_BAND;
+
+----------drop and undrop -----------------------
+
+drop table players_tbstage;
+
+select * from players_tbstage;
+
+undrop table players_tbstage; -------if data_retention period is 0, we cannot undrop the table
+
+--- undrop schema, database
+
+create database test_db;
+create schema test_schema;
+use database test_db;
+use schema test_schema;
+create table test_table(ID number(10));
+
+drop database test_db;
+
+undrop database test_db;
+
+-----checking table usage
+select * from SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS;
+
+

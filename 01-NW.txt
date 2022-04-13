@@ -1,0 +1,134 @@
+SELECT * FROM TRIPS limit 100000;
+
+list@citibike_trips;
+
+show file formats in database citibike;
+
+truncate trips;
+
+copy into trips from @citibike_trips
+file_format=CSV;
+
+SELECT * FROM TRIPS limit 1000;
+
+
+select date_trunc('hour', starttime) as "date",
+count(*) as "num trips",
+avg(tripduration)/60 as "avg duration (mins)",
+avg(haversine(start_station_latitude, start_station_longitude, end_station_latitude, end_station_longitude)) as "avg distance (km)"
+from trips
+group by 1 order by 1;
+
+create table trips_dev clone trips;
+
+
+SELECT * FROM TRIPS_DEV limit 1000;
+
+------------------------------------------------
+
+create database weather;
+
+use role accountadmin;
+
+use warehouse compute_wh;
+
+use database weather;
+
+use schema public;
+
+create table json_weather_data (v variant);
+
+create stage nyc_weather
+url = 's3://snowflake-workshop-lab/weather-nyc';
+
+show stages;
+
+list @nyc_weather;
+
+select metadata$filename, $1 from @nyc_weather;
+
+copy into json_weather_data
+from @nyc_weather
+file_format = (type=json);
+
+select * from json_weather_data;
+
+select * from json_weather_data_view limit 10;
+
+
+create view json_weather_data_view as
+select
+v:time::timestamp as observation_time,
+v:city.id::int as city_id,
+v:city.name::string as city_name,
+v:city.country::string as country,
+v:city.coord.lat::float as city_lat,
+v:city.coord.lon::float as city_lon,
+v:clouds.all::int as clouds,
+(v:main.temp::float)-273.15 as temp_avg,
+(v:main.temp_min::float)-273.15 as temp_min,
+(v:main.temp_max::float)-273.15 as temp_max,
+v:weather[0].main::string as weather,
+v:weather[0].description::string as weather_desc,
+v:weather[0].icon::string as weather_icon,
+v:wind.deg::float as wind_dir,
+v:wind.speed::float as wind_speed
+from json_weather_data
+where city_id = 5128638;
+
+
+------drop and undrop table
+
+drop table json_weather_data;
+
+undrop table json_weather_data;
+
+select * from json_weather_data;
+
+
+-------------------------------------
+
+create role junior_developer;
+
+create user user1;
+
+grant role junior_developer to user shashank;
+
+use role junior_developer;
+
+use role accountadmin;
+
+show databases;
+
+grant usage on database citibike to role junior_developer;
+
+grant usage on database weather to role junior_developer;
+
+grant modify on database citibike to role junior_developer;
+
+------------------accidental dml operation ( roll back a table )
+use citibike;
+update trips set start_station_name = 'oops';
+
+select * from trips limit 10;
+
+---- query_id = 01a22b8f-0000-3061-0000-00008369782d
+
+set query_id = '01a22b8f-0000-3061-0000-00008369782d';
+
+create or replace table trips as
+(select * from trips before (statement => $query_id));
+
+select * from trips limit 10;
+
+--------------creating metadata for the table
+
+create table tripmeta like trips;
+
+insert into tripmeta select * from trips limit 10;
+
+select * from tripmeta;
+
+-------------------------
+
+select tripduration from trips;

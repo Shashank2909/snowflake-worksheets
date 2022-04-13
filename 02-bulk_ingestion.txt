@@ -1,0 +1,98 @@
+use citibike;
+
+show tables;
+
+create or replace sequence new_sq 
+start 1
+increment 2;
+
+drop sequence new_sq;
+
+select new_sq.nextval;
+
+list @~;    -- user stage
+
+list @%trips;  -- table stage
+
+show stages;
+
+create or replace stage int_stage;
+
+remove @~/first/;
+
+list @~/bighbull.csv;
+
+-- load data into table using internal stage
+create or replace table bigB ( Address varchar, balance varchar, yes_no varchar );
+select * from bigB;
+
+copy into bigB from @~/first/bighbull.csv
+file_format = 'CSV';
+
+ALTER FILE FORMAT "CITIBIKE"."PUBLIC".CSV SET COMPRESSION = 'AUTO' FIELD_DELIMITER = ',' RECORD_DELIMITER = '\n' SKIP_HEADER = 1 FIELD_OPTIONALLY_ENCLOSED_BY = '\042' TRIM_SPACE = FALSE ERROR_ON_COLUMN_COUNT_MISMATCH = TRUE ESCAPE = 'NONE' ESCAPE_UNENCLOSED_FIELD = '\134' DATE_FORMAT = 'AUTO' TIMESTAMP_FORMAT = 'AUTO';
+
+truncate bigB;
+
+select metadata$file_row_number, v.$1,v.$2,v.$3 from @~/first/bighbull.csv v;
+
+select * from bigB;
+
+------------------------- football data ------------------------------
+
+list @INT_STAGE;
+
+create or replace table players (ID int,Name varchar,Age int,Nationality varchar,Overall int,Club varchar,Value varchar, Preferred_foot varchar);
+
+select * from players;
+
+copy into players from @int_stage/part-00000-947b3218-4053-429b-a50c-a2df95af7184-c000.csv
+file_format = 'CSV';
+
+
+--------------- table stage (football dataset) --------------------------
+
+create or replace table players_tbstage (ID int,Name varchar,Age int,Nationality varchar,Overall int,Club varchar,Value varchar, Preferred_foot varchar)
+STAGE_FILE_FORMAT = (TYPE=CSV);
+
+show file formats;
+-- put file:///home/shashank
+
+list @%players_tbstage;
+
+select $1,$2 from @%players_tbstage;   -- parquet only work with $1
+
+copy into players_tbstage from @%players_tbstage on_error=continue;
+
+select count(*) from players_tbstage;
+
+------copy history  and load history -------------
+
+select * from snowflake.account_usage.copy_history;
+select * from snowflake.account_usage.load_history;
+
+----------- parquet  loading (query without loading) ---------------------
+
+create or replace file format parquet_ff type='parquet';
+
+create or replace stage my_stg file_format = parquet_ff;
+
+show stages;
+ --- put file:///
+list @my_stg/data_pq;
+
+select $1:ID, $1:Name, $1:Value from @my_stg/data_pq;
+
+-- partitioned parquet
+list @my_stg/partdata_pq;
+
+select count($1:Joined) from @my_stg/partdata_pq/;
+
+//create or replace table
+//players_tbstage_part (ID int,Name varchar,Age int,Nationality varchar,Overall int,Club varchar,Value varchar, Joined varchar);
+
+create or replace table players_instage_part (v variant);
+
+copy into players_instage_part
+from @my_stg/partdata_pq/;
+
+select count(*) from players_instage_part;

@@ -1,0 +1,16 @@
+-- only account admin and security admin roles can create users
+desc user shashank;
+
+show grants to user shashank;
+show grants on user shashank;
+
+
+use citibike;
+
+----------- spark-snowflake connector 
+
+select * from players;
+
+truncate players;
+
+
