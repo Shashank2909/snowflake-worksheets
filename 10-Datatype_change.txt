@@ -1,0 +1,15 @@
+use citibike;
+
+select * from players;
+
+alter table players add column new date;
+
+update players set new=to_date(joined,'yyyy-mm-dd');
+
+alter table players drop column joined;
+
+alter table players rename column new to joined;
+
+select * from information_schema.Columns;-- where table_name='players';
+
+desc table players;

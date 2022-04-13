@@ -1,0 +1,23 @@
+use citibike;
+create or replace table test1 (id number,name varchar,day timestamp default current_timestamp());
+
+create or replace sequence seq
+start 1
+increment 1;
+
+
+create or replace task task1
+warehouse = compute_wh
+schedule = '1 minute'
+as
+insert into test1 values(seq.nextval,'task1',current_timestamp());
+
+select * from test1;
+
+alter task task1 resume;  --- resume the task first
+alter task task1 suspend;
+desc task task1;
+
+select * from table(information_schema.task_history()) where name='task1';
+
+
