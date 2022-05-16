@@ -1,0 +1,80 @@
+--create or replace database MHF;
+use database MHF;
+use schema PUBLIC;
+use warehouse compute_wh;
+
+
+
+-- Create a Source table with extra column load_time.
+create or replace table dept_Source(dept_id varchar(100),dept_name varchar(100));
+--Create a Target table same as source but excluding load_time column.
+create or replace table dept_final(dept_id varchar(100),dept_name varchar(100));
+--Create a file format.
+create or replace file format MHF.PUBLIC.CSV_FILE TYPE=CSV field_delimiter=','skip_header=1;
+
+
+
+
+--create or replace table dept_Source(dept_id varchar(100),dept_name varchar(100));
+--create or replace table dept_final(dept_id varchar(100),dept_name varchar(100));
+
+
+
+//drop stream stream1;
+//drop table dept_Source;
+//drop table dept_final;
+--Create a stream to capture the CDC on the Source table.
+insert into dept_Source values('1','etc');
+select * from dept_Source;
+create or replace stream stream1 on table dept_Source;
+show streams;
+
+
+--Data can be loaded into the table using COPY INTO command or using SNOWPIPE. Here I am using snowpipe example.
+create or replace pipe MHF.PUBLIC.PIPE_DEPT ----PIPE_DEPT is the name of the pipe----------
+auto_ingest = true
+integration = ‘Integration_event_name‘ -----Integration_event_name is name of integration----------------
+as
+copy into MHF.PUBLIC.dept_source
+from (select $1,$2,current_timestamp() as load_time from @MHF.PUBLIC.EXT_STAGE_DEPT) -------EXT_STAGE_DEPT is external stage name----------------
+file_format = CSV_FILE;
+select SYSTEM$PIPE_STATUS('MHF.PUBLIC.PIPE_DEPT');
+alter pipe MHF.PUBLIC. PIPE_DEPT refresh;
+
+
+
+--Execute the following queries to observe the records.
+select * from dept_Source;
+select * from stream1;
+select * from dept_final;
+
+
+
+--Create a merge statement to load data from stream to target table and also schedule a task to automate the merge statement.
+create or replace task Task1 ----Task1 is the name of the task-----
+warehouse=compute_wh
+schedule = '1 minute'
+as
+merge into dept_final f
+--using (select dept_id,dept_name from stream1 where load_time=(select max(load_time) from stream1) ) s
+using (select * from stream1) s
+on f.dept_id=s.dept_id
+WHEN matched                                -- AND f.dept_name!=s.dept_name
+THEN UPDATE SET f.dept_name=s.dept_name
+WHEN NOT MATCHED
+THEN INSERT (f.dept_id,f.dept_name)
+values (s.dept_id,s.dept_name);
+
+show tasks;
+
+
+alter task Task1 resume;
+alter task Task1 suspend;
+
+
+
+
+insert into MHF.PUBLIC.dept_source values('d012', 'Medica');
+delete from MHF.PUBLIC.dept_source where dept_id = 'd012';
+update MHF.PUBLIC.dept_source set dept_name='Snowflake' where dept_id='d002';
+delete from MHF.PUBLIC.dept_Source where dept_id='d006';

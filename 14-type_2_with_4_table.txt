@@ -1,0 +1,146 @@
+use database MHF;
+use schema PUBLIC;
+use warehouse compute_wh;
+
+--Creating required tables as mentioned above.
+--create or replace table temp(dept_id varchar(10),dept_name varchar(100), load_time timestamp_NTZ);
+create or replace table temp(dept_id varchar(10), dept_name varchar(100));
+create or replace table landing(dept_id varchar(10),dept_name varchar(100));
+create or replace table staging(dept_id varchar(10),dept_name varchar(100),start_date timestamp_NTZ,
+end_date timestamp_NTZ, flag varchar(1)); ----acts as type 2 table
+create or replace table analytics(dept_id varchar(10),dept_name varchar(100)); ---acts as type 1 table
+
+
+--A stream is created on the landing table to capture CDC.
+create or replace stream stream_name on table landing;
+
+
+
+--Create a file_format
+create or replace file format MHF.PUBLIC.CSV_FILE TYPE=CSV field_delimiter=','skip_header=1;
+
+
+
+--Run the following queries:
+select * from temp;
+select * from landing;
+select * from stream_name;
+select * from staging;
+select * from analytics;
+
+create or replace notification integration SNOWPIPE_EVENT
+enabled = TRUE
+type = Queue
+NOTIFICATION_PROVIDER = AZURE_STORAGE_QUEUE
+AZURE_STORAGE_QUEUE_PRIMARY_URI = 'https://snowstorage1205.queue.core.windows.net/storagequeue'
+AZURE_TENANT_ID = 'f2f70e35-f7a3-49d2-bc65-6ded8432c767';
+
+desc NOTIFICATION integration SNOWPIPE_EVENT;
+
+create or replace stage new_pipe_stage
+url = 'azure://snowstorage1205.blob.core.windows.net/storagecontainer'
+credentials = (azure_sas_token='?sv=2020-08-04&ss=bfqt&srt=sco&sp=rwdlacupitfx&se=2022-05-12T14:22:52Z&st=2022-05-12T06:22:52Z&spr=https&sig=Vm3TwqQh6RzWOBKIUsJcAZ8on%2FZvMaVgwjmDTqBpviA%3D');
+
+-- A Snowpipe is created for continuous data ingestion.
+create or replace pipe MHF.PUBLIC.dept_pipe
+auto_ingest = true
+integration = 'SNOWPIPE_EVENT'
+as
+copy into MHF.PUBLIC.temp
+from (select $1,$2 from @MHF.PUBLIC.new_pipe_stage)
+file_format = CSV_FILE;
+//
+select SYSTEM$PIPE_STATUS('MHF.PUBLIC.dept_pipe');
+alter pipe MHF.PUBLIC.dept_pipe refresh;
+-------------refresh functionality is used to resolve specific issues when snowpipe fails to load a file.-----------------------------
+select * from table(information_schema.copy_history(table_name=>'temp4', start_time=> dateadd(hours,-10,current_timestamp())));
+select dept_id,dept_name from temp where load_time=(select max(load_time) from temp);
+
+
+
+--CreateTask1 to load data from external stage to temporary table
+create or replace task temptoland
+warehouse=compute_wh
+schedule='1 minute'
+as
+MERGE INTO LANDING a
+--USING (select dept_id,dept_name from temp where load_time=(select max(load_time) from temp)) b
+using (select * from temp) b
+ON a.dept_id = b.dept_id
+WHEN MATCHED AND a.dept_name!= b.dept_name THEN
+UPDATE SET a.dept_name=b.dept_name
+WHEN NOT MATCHED THEN
+INSERT (a.dept_id,a.dept_name)
+VALUES(b.dept_id,b.dept_name);
+
+
+
+-- Schedule a Task 2 to load the data from landing table to staging table using stream
+create or replace task landtostage
+warehouse=compute_wh
+after temptoland
+as
+MERGE INTO STAGING T1
+USING (SELECT * FROM stream_name) T2
+ON (T1.DEPT_ID = T2.DEPT_ID and T1.dept_name = T2.dept_name)
+WHEN MATCHED AND (T2.METADATA$ACTION='INSERT' and T2.METADATA$ISUPDATE='TRUE') THEN
+UPDATE SET T1.dept_name=T2.dept_name, START_DATE=TO_TIMESTAMP_NTZ(CURRENT_TIMESTAMP),FLAG='Y'
+WHEN MATCHED AND (T2.METADATA$ACTION='DELETE' and T2.METADATA$ISUPDATE='TRUE') THEN
+UPDATE SET END_DATE=TO_TIMESTAMP_NTZ(CURRENT_TIMESTAMP),FLAG='N'
+WHEN MATCHED AND (T2.METADATA$ACTION='DELETE') THEN
+UPDATE SET END_DATE=TO_TIMESTAMP_NTZ(CURRENT_TIMESTAMP),FLAG='N'
+WHEN NOT MATCHED AND T2.METADATA$ACTION='INSERT' THEN
+INSERT (T1.DEPT_ID,T1.DEPT_NAME,START_DATE,END_DATE,FLAG)
+VALUES (T2.DEPT_ID,T2.DEPT_NAME,TO_TIMESTAMP_NTZ(CURRENT_TIMESTAMP),NULL,'Y');
+
+
+
+--Task 3 to load the active records from staging table to analytics table
+create or replace task stagetoanalytics
+warehouse=compute_wh
+after landtostage
+as
+INSERT OVERWRITE INTO ANALYTICS
+SELECT
+DEPT_ID,DEPT_NAME
+FROM STAGING WHERE FLAG='Y';
+
+
+
+select * from temp;
+select * from landing;
+select * from stream_name;
+select * from staging;
+select * from analytics;
+
+
+
+-- Child tasks has to be resumed 1st
+show tasks;
+alter task stagetoanalytics resume; --child 2
+alter task landtostage resume; --child 1
+alter task temptoland resume; --parent task
+
+-- Parent task has to be suspended 1st
+alter task temptoland suspend; --parent task
+alter task landtostage suspend; --child 1
+alter task stagetoanalytics suspend; --child 2
+
+
+
+
+truncate table temp;
+truncate table landing;
+truncate table staging;
+truncate table analytics;
+drop stream stream_name;
+
+insert into temp(select * from temp at (offset => -20*60));
+
+-- Perform few DML operations like inserts, updates, and deletes to check how it is works if not using snowpipe.
+insert into MHF.PUBLIC.temp values('d012', 'Medica');
+--delete from MHF.PUBLIC.temp where dept_id = 'd012';
+update MHF.PUBLIC. temp set dept_name='Snowflake' where dept_id='d002';
+delete from MHF.PUBLIC. temp where dept_id='d006';
+
+

@@ -1,0 +1,29 @@
+create database SP;
+
+use SP;
+
+create table hello (id int, name varchar);
+
+insert into hello values(1,'shashank');
+insert into hello values(2,'ajgaonkar');
+
+select * from hello;
+
+create or replace procedure sp.public.hello_proc(TABLENAME text)
+returns VARCHAR
+language javascript
+as
+$$
+    let sql_text = 'select * from ' + TABLENAME;
+    var res = snowflake.execute({sqlText: sql_text});
+    res.next();
+    
+    return res.getColumnValue(1) + ',' + res.getCoulmnValue(2);
+$$;
+
+call hello_proc('HELLO');
+
+show procedures;
+
+
+

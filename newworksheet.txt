@@ -1,0 +1,28 @@
+use citibike;
+
+select * from players limit 10;
+
+select count(*) from players;
+
+truncate players;
+
+desc table players;
+
+select * from players_tbstage;
+
+-- deleting duplicate values
+select id,name,count(*)
+from players
+group by id,name
+having count(*)>1;
+
+create or replace table players_temp as
+select distinct * from players;
+
+select count(*) from players_temp;
+desc table players_temp;
+drop table players;
+alter table players_temp rename to players;
+
+
+

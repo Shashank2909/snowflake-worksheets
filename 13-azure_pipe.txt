@@ -1,0 +1,41 @@
+create database pipe_db;
+use pipe_db;
+create or replace table dept_source(dept_id varchar(100),dept_name varchar(100));
+
+Create or replace notification integration integration_name
+Enabled = TRUE
+Type = Queue
+NOTIFICATION_PROVIDER = AZURE_STORAGE_QUEUE
+AZURE_STORAGE_QUEUE_PRIMARY_URI = 'https://snowstorage0506.queue.core.windows.net/snowqueue'
+AZURE_TENANT_ID = 'f2f70e35-f7a3-49d2-bc65-6ded8432c767';
+//Notification_Provider = Azure_Storage_Queue
+//Azure_Storage_Queue_Primary_URL = "https://snowsql.queue.core.windows.net/shashank"    ---paste the url here which can be available in further steps)
+//Azure_Tenant_ID = "f2f70e35-f7a3-49d2-bc65-6ded8432c767";  
+
+Desc notification integration integration_name;
+
+-- external stage
+
+create or replace stage new_pipe_stage
+url = 'azure://snowstorage0506.blob.core.windows.net/snowcontainer'
+credentials = (azure_sas_token='?sv=2020-08-04&ss=bfqt&srt=co&sp=rwdlacupitfx&se=2022-06-06T18:21:32Z&st=2022-05-06T10:21:32Z&spr=https&sig=DAFzmPp%2BrAuHDKd%2B5k91vyhkiw0AC4U1YqRupDvyJmU%3D');
+
+create or replace pipe new_pipe0506
+auto_ingest = True
+integration = integration_name
+as
+copy into dept_source
+from @new_pipe_stage
+file_format = (Type = 'CSV');
+
+show pipes;
+
+insert into dept_source values('1','sez');
+
+select * from dept_source;
+
+alter pipe new_pipe0506 set pipe_execution_paused=true; 
+alter pipe new_pipe0506 refresh;
+select system$pipe_status('pipe_db.PUBLIC.new_pipe0506');
+
+list @new_pipe_stage;
