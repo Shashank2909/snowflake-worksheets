@@ -1,0 +1,114 @@
+use snowflake_sample_data;
+
+select * from TPCDS_SF10TCL.CUSTOMER limit 1000;
+
+select * from TPCDS_SF10TCL.CUSTOMER_ADDRESS limit 1000;
+
+select * from TPCDS_SF10TCL.CUSTOMER_DEMOGRAPHICS limit 1000;
+
+use citibike;
+
+create or replace table CUSTOMER
+AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.CUSTOMER;
+
+create or replace table CUSTOMER_ADDRESS
+AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.CUSTOMER_ADDRESS;
+
+create or replace table CUSTOMER_DEMOGRAPHICS
+AS SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.CUSTOMER_DEMOGRAPHICS;
+
+select * from customer limit 10;
+select * from customer_address limit 10;
+select * from customer_demographics limit 10;
+
+--  first view
+create or replace view customer_vw_01 as 
+    select 
+        cust.C_SALUTATION	||' ' ||cust.C_FIRST_NAME	||' ' || cust.C_LAST_NAME	AS CUSTOMER_NAME,
+        case
+          when demo.CD_GENDER='M' then 'Male'
+          when demo.CD_GENDER='F' then 'Female'
+          else 'Not Disclosed'
+        end as Gender,
+        case
+          when demo.CD_MARITAL_STATUS='U' then 'Married'
+          when demo.CD_MARITAL_STATUS='U' then 'Unmarried'
+          when demo.CD_MARITAL_STATUS='D' then 'Divorced'
+          when demo.CD_MARITAL_STATUS='S' then 'Separated'
+          else 'Not Disclosed'
+        end as Marital_status,
+      demo.CD_EDUCATION_STATUS	,
+      cust.C_BIRTH_DAY || '-'||cust.C_BIRTH_MONTH || '-'||cust.C_BIRTH_YEAR as CUSTOMER_DOB,
+      cust.C_BIRTH_COUNTRY,
+      add.CA_STREET_NUMBER||', '||add.CA_STREET_NAME||', '||add.CA_STREET_TYPE||', '||add.CA_SUITE_NUMBER ||', '|| add.CA_STATE	||', '|| add.CA_ZIP ||', '||add.CA_COUNTRY	 as address, 
+      '$' ||demo.CD_PURCHASE_ESTIMATE as PURCHASE_ESTIMATE,
+      demo.CD_CREDIT_RATING
+    from 
+        customer cust 
+        join customer_address add on add.CA_ADDRESS_SK = cust.C_CUSTOMER_SK
+        join customer_demographics demo on demo.CD_DEMO_SK = cust.C_CURRENT_HDEMO_SK   
+   where 
+    cust.C_SALUTATION is not null and
+    cust.C_FIRST_NAME is not null and 
+    cust.C_LAST_NAME is not null AND
+    add.CA_COUNTRY is not null ;
+ ;
+-- output of the view
+select * from customer_vw_01;
+
+-- another view with group by clause and aggregation function
+create or replace view customer_by_credit_rating_vw as 
+select demo.CD_CREDIT_RATING, count(1) as customer_cnt
+from 
+    customer cust 
+    join customer_address add on add.CA_ADDRESS_SK = cust.C_CURRENT_ADDR_SK
+    join customer_demographics demo on demo.CD_DEMO_SK = cust.C_CURRENT_HDEMO_SK   
+where 
+cust.C_SALUTATION is not null and
+cust.C_FIRST_NAME is not null and 
+cust.C_LAST_NAME is not null AND
+add.CA_COUNTRY is not null 
+group by demo.CD_CREDIT_RATING;
+
+select * from customer_by_credit_rating_vw;
+
+-- gets the ddl command used to create object
+select get_ddl('table','customer');
+
+-- force view
+-- create view when underlying table does not exists and will be created in future
+
+--
+show views; -- all columns
+show terse views; -- limited columns
+
+-- materialized views
+select * from emp;
+create or replace materialized view my_mat_vw_01 as
+select * from  emp;
+
+insert into emp values(1,'shashank','azure');
+
+select * from my_mat_vw_01;
+
+drop materialized view my_mat_vw_01;
+-- SQL compilation error: error line 0 at position -1 Invalid materialized view definition. More than one table referenced in the view definition
+-- cannot create materialized views using joins, groupby etc
+create or replace materialized view my_mat_with_join as 
+  select demo.CD_CREDIT_RATING, count(1) as customer_cnt
+  from 
+      customer cust 
+      join customer_demographics demo on demo.CD_DEMO_SK = cust.C_CURRENT_HDEMO_SK   
+  where 
+  cust.C_SALUTATION is not null and
+  cust.C_FIRST_NAME is not null and 
+  cust.C_LAST_NAME is not null 
+  group by demo.CD_CREDIT_RATING;
+  
+show views like '%MAT%';
+    
+-- describe it
+describe view MY_MAT_VW_01;
+-- get_ddl
+select get_ddl('view','MY_MAT_VW_01');
+
